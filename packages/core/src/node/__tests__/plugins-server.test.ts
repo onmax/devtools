@@ -1,6 +1,6 @@
 import type { DevToolsDockEntry } from '@vitejs/devtools-kit'
 import { describe, expect, it } from 'vitest'
-import { renderDockImportsMap } from '../plugins/server'
+import { redirectDevToolsMountPath, renderDockImportsMap } from '../plugins/server'
 
 describe('renderDockImportsMap', () => {
   it('uses default importName when omitted', () => {
@@ -53,5 +53,80 @@ describe('renderDockImportsMap', () => {
     const defaultImportCount = code.split('r["default"]').length - 1
     expect(defaultImportCount).toBe(2)
     expect(code).toContain('r["renderPanel"]')
+  })
+})
+
+describe('redirectDevToolsMountPath', () => {
+  function callRedirect(url: string, originalUrl = url) {
+    let statusCode: number | undefined
+    let location: string | undefined
+    let ended = false
+    let nextCalled = false
+
+    redirectDevToolsMountPath(
+      { originalUrl, url } as any,
+      {
+        set statusCode(value: number) {
+          statusCode = value
+        },
+        get statusCode() {
+          return statusCode ?? 200
+        },
+        setHeader(name: string, value: string) {
+          if (name === 'Location') {
+            location = value
+          }
+        },
+        end() {
+          ended = true
+        },
+      } as any,
+      () => {
+        nextCalled = true
+      },
+    )
+
+    return {
+      ended,
+      location,
+      nextCalled,
+      statusCode,
+    }
+  }
+
+  it('redirects the mounted devtools root to the canonical trailing slash URL', () => {
+    expect(callRedirect('/', '/.devtools')).toEqual({
+      ended: true,
+      location: '/.devtools/',
+      nextCalled: false,
+      statusCode: 302,
+    })
+  })
+
+  it('preserves the query string when redirecting the mounted devtools root', () => {
+    expect(callRedirect('/?foo=bar', '/.devtools?foo=bar')).toEqual({
+      ended: true,
+      location: '/.devtools/?foo=bar',
+      nextCalled: false,
+      statusCode: 302,
+    })
+  })
+
+  it('passes through the canonical trailing slash URL', () => {
+    expect(callRedirect('/', '/.devtools/')).toEqual({
+      ended: false,
+      location: undefined,
+      nextCalled: true,
+      statusCode: undefined,
+    })
+  })
+
+  it('passes through devtools subpaths', () => {
+    expect(callRedirect('/auth', '/.devtools/auth')).toEqual({
+      ended: false,
+      location: undefined,
+      nextCalled: true,
+      statusCode: undefined,
+    })
   })
 })

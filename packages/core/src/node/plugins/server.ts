@@ -1,8 +1,9 @@
 import type { ClientScriptEntry, DevToolsDockEntry, DevToolsNodeContext } from '@vitejs/devtools-kit'
-import type { Plugin } from 'vite'
+import type { Connect, Plugin } from 'vite'
 import {
   DEVTOOLS_DOCK_IMPORTS_VIRTUAL_ID,
   DEVTOOLS_MOUNT_PATH,
+  DEVTOOLS_MOUNT_PATH_NO_TRAILING_SLASH,
 } from '@vitejs/devtools-kit/constants'
 import { createDevToolsContext } from '../context'
 import { createDevToolsMiddleware } from '../server'
@@ -34,6 +35,18 @@ export function renderDockImportsMap(docks: Iterable<DevToolsDockEntry>): string
   ].join('\n')
 }
 
+export const redirectDevToolsMountPath: Connect.NextHandleFunction = (req, res, next) => {
+  const originalUrl = req.originalUrl ?? req.url
+  if (originalUrl === DEVTOOLS_MOUNT_PATH_NO_TRAILING_SLASH || originalUrl?.startsWith(`${DEVTOOLS_MOUNT_PATH_NO_TRAILING_SLASH}?`)) {
+    res.statusCode = 302
+    res.setHeader('Location', `${DEVTOOLS_MOUNT_PATH}${originalUrl.slice(DEVTOOLS_MOUNT_PATH_NO_TRAILING_SLASH.length)}`)
+    res.end()
+    return
+  }
+
+  next()
+}
+
 export function DevToolsServer(): Plugin {
   let context: DevToolsNodeContext
   return {
@@ -54,6 +67,7 @@ export function DevToolsServer(): Plugin {
         },
         context,
       })
+      viteDevServer.middlewares.use(DEVTOOLS_MOUNT_PATH_NO_TRAILING_SLASH, redirectDevToolsMountPath)
       viteDevServer.middlewares.use(DEVTOOLS_MOUNT_PATH, middleware)
     },
     resolveId(id) {
